@@ -50,6 +50,7 @@ func NextLocalID(tx *gorm.DB, chatID string, fromID int64) (uint64, error) {
 
 	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("internal_id = ?", chatID).
+		Order("last_message_id DESC, id DESC").
 		First(&conv).Error
 
 	isNewConv := false
@@ -100,7 +101,7 @@ func NextLocalID(tx *gorm.DB, chatID string, fromID int64) (uint64, error) {
 
 func MarkAsRead(tx *gorm.DB, chatID string, userID int64, messageID uint64) error {
 	var conv db_models.Conversation
-	if getDB(tx).Select("last_message_id").Where("internal_id = ?", chatID).First(&conv).Error == nil && conv.LastMessageID > 0 {
+	if getDB(tx).Select("last_message_id").Where("internal_id = ?", chatID).Order("last_message_id DESC, id DESC").First(&conv).Error == nil && conv.LastMessageID > 0 {
 		if messageID > conv.LastMessageID {
 			messageID = conv.LastMessageID
 		}
@@ -121,7 +122,7 @@ func GetActiveMemberIDs(tx *gorm.DB, chatID string) ([]int64, error) {
 
 func GetConversation(tx *gorm.DB, chatID string) (*db_models.Conversation, error) {
 	var conv db_models.Conversation
-	err := getDB(tx).Where("internal_id = ?", chatID).First(&conv).Error
+	err := getDB(tx).Where("internal_id = ?", chatID).Order("last_message_id DESC, id DESC").First(&conv).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -321,7 +322,7 @@ func AddUserToConversation(chatID string, userID int64, inviterID int64, text st
 
 func IsChatOwner(tx *gorm.DB, chatID string, userID int64) bool {
 	var conv db_models.Conversation
-	if getDB(tx).Select("owner_id").Where("internal_id = ?", chatID).First(&conv).Error != nil || conv.OwnerID == nil {
+	if getDB(tx).Select("owner_id").Where("internal_id = ?", chatID).Order("id DESC").First(&conv).Error != nil || conv.OwnerID == nil {
 		return false
 	}
 	return *conv.OwnerID == userID

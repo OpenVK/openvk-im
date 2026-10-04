@@ -83,7 +83,7 @@ func MarkAsRead(c *gin.Context, r *core.BaseHandler) {
 				tasks[chatID] = &markTask{maxLocalID: msg.LocalID, pID: peerID}
 			} else {
 				var conv db_models.Conversation
-				if db.Instance.Select("last_message_id").Where("internal_id = ?", chatID).First(&conv).Error == nil && conv.LastMessageID > 0 {
+				if db.Instance.Select("last_message_id").Where("internal_id = ?", chatID).Order("last_message_id DESC, id DESC").First(&conv).Error == nil && conv.LastMessageID > 0 {
 					if startID <= conv.LastMessageID {
 						tasks[chatID] = &markTask{maxLocalID: startID, pID: peerID}
 					} else {
