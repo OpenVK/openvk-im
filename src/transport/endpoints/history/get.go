@@ -206,6 +206,9 @@ func GetHistory(c *gin.Context, r *core.BaseHandler) {
 	if member != nil && member.LeftAt == nil {
 		unreadQuery := db.Instance.Model(&db_models.Message{}).
 			Where("chat_id = ? AND local_id > ? AND from_id != ?", chatID, member.LastReadID, currentUserID)
+		if member.DeletedBeforeID > 0 {
+			unreadQuery = unreadQuery.Where("local_id > ?", member.DeletedBeforeID)
+		}
 		unreadQuery = db_models.BuildVisibilityFilter(unreadQuery, chatID, currentUserID)
 		unreadQuery.Count(&unreadCount)
 	}

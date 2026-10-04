@@ -4,8 +4,34 @@ import (
 	"strconv"
 	"strings"
 
+	"ovk-im/src/db"
+
 	"gorm.io/gorm"
 )
+
+func ResolveGlobalMsgID(tx *gorm.DB, chatID string, localID uint64, lastCMID uint64, lastMsgID uint64) uint64 {
+	if localID == 0 {
+		return 0
+	}
+	if lastCMID > 0 && localID >= lastCMID && lastMsgID > 0 {
+		return lastMsgID
+	}
+	var msgID uint64
+	dbRef := tx
+	if dbRef == nil {
+		dbRef = db.Instance
+	}
+	if dbRef != nil {
+		dbRef.Table("messages").Select("id").Where("chat_id = ? AND local_id = ?", chatID, localID).Scan(&msgID)
+		if msgID == 0 {
+			dbRef.Table("messages").Select("id").Where("chat_id = ? AND local_id <= ?", chatID, localID).Order("local_id DESC").Limit(1).Scan(&msgID)
+		}
+	}
+	if msgID == 0 {
+		return localID
+	}
+	return msgID
+}
 
 // VKApiConversation represents the VK API conversation object.
 type VKApiConversation struct {
@@ -112,23 +138,40 @@ func (c *Conversation) ToVKApiStruct(tx *gorm.DB, currentUserID int64, member *C
 		localID = -PeerID
 	}
 
+	var inReadCmid uint64 = 0
+	var outReadCmid uint64 = 0
+	if member != nil {
+		inReadCmid = member.LastReadID
+	}
+
+	lastCMID := c.LastMessageID
+	var lastMsgID uint64 = 0
+	dbRef := tx
+	if dbRef == nil {
+		dbRef = db.Instance
+	}
+	if dbRef != nil && lastCMID > 0 {
+		dbRef.Table("messages").Select("id").Where("chat_id = ? AND local_id = ?", c.InternalID, lastCMID).Scan(&lastMsgID)
+	}
+
+	inReadID := ResolveGlobalMsgID(tx, c.InternalID, inReadCmid, lastCMID, lastMsgID)
+	outReadID := ResolveGlobalMsgID(tx, c.InternalID, outReadCmid, lastCMID, lastMsgID)
+
 	conv := VKApiConversation{
 		Peer: VKApiPeer{
 			ID:      PeerID,
 			Type:    peerType,
 			LocalID: localID,
 		},
-		LastMessageID:             c.LastMessageID,
-		LastConversationMessageID: c.LastMessageID,
-		InRead:                    c.InReadID,
-		OutRead:                   c.OutReadID,
-		InReadCmid:                c.InReadID,
-		OutReadCmid:               c.OutReadID,
+		LastMessageID:             lastMsgID,
+		LastConversationMessageID: lastCMID,
+		InRead:                    inReadID,
+		OutRead:                   outReadID,
+		InReadCmid:                inReadCmid,
+		OutReadCmid:               outReadCmid,
 	}
 
 	if member != nil {
-		conv.InRead = member.LastReadID
-		conv.InReadCmid = member.LastReadID
 		if member.LeftAt != nil {
 			conv.CanWrite = VKCanWrite{
 				Allowed: false,
@@ -147,9 +190,12 @@ func (c *Conversation) ToVKApiStruct(tx *gorm.DB, currentUserID int64, member *C
 	}
 
 	var unreadCount int64
-	if member == nil || member.LeftAt == nil {
+	if member != nil && member.LeftAt == nil {
 		unreadQ := tx.Model(&Message{}).
-			Where("chat_id = ? AND local_id > ? AND from_id != ?", c.InternalID, conv.InRead, currentUserID)
+			Where("chat_id = ? AND local_id > ? AND from_id != ?", c.InternalID, member.LastReadID, currentUserID)
+		if member.DeletedBeforeID > 0 {
+			unreadQ = unreadQ.Where("local_id > ?", member.DeletedBeforeID)
+		}
 		unreadQ = BuildVisibilityFilter(unreadQ, c.InternalID, currentUserID)
 		unreadQ.Count(&unreadCount)
 	}
