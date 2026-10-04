@@ -36,16 +36,44 @@ func MarkAsRead(c *gin.Context, r *core.BaseHandler) {
 	idsStr := c.DefaultQuery("message_ids", c.PostForm("message_ids"))
 	markAll := c.DefaultQuery("mark_conversation_as_read", c.PostForm("mark_conversation_as_read")) == "1"
 
-	if peerID == 0 && idsStr == "" && startID == 0 {
-		r.Reject(c, 100, "One of the parameters is missing: peer_id, start_message_id or message_ids")
-		return
-	}
-
 	type markTask struct {
 		maxLocalID uint64
 		pID        int64
 	}
 	tasks := make(map[string]*markTask)
+
+	if peerID == 0 && (markAll || (startID == 0 && idsStr == "")) {
+		var unreadMembers []struct {
+			InternalChatID string `gorm:"column:internal_chat_id"`
+			ConvLastMsgID  uint64 `gorm:"column:conv_last_message_id"`
+			MemLastMsgID   uint64 `gorm:"column:mem_last_message_id"`
+		}
+
+		db.Instance.Table("conversation_members").
+			Select(`
+				conversation_members.internal_chat_id,
+				COALESCE(conversations.last_message_id, 0) as conv_last_message_id,
+				COALESCE(conversation_members.last_message_id, 0) as mem_last_message_id
+			`).
+			Joins("LEFT JOIN conversations ON conversations.internal_id = conversation_members.internal_chat_id").
+			Where("conversation_members.user_id = ? AND conversation_members.left_at IS NULL", currentUserID).
+			Where("COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > COALESCE(conversation_members.last_read_id, 0)").
+			Where("COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > COALESCE(conversation_members.deleted_before_id, 0)").
+			Scan(&unreadMembers)
+
+		for _, m := range unreadMembers {
+			targetID := m.ConvLastMsgID
+			if targetID == 0 || (m.MemLastMsgID > 0 && m.MemLastMsgID > targetID) {
+				targetID = m.MemLastMsgID
+			}
+			if targetID > 0 {
+				tasks[m.InternalChatID] = &markTask{
+					maxLocalID: targetID,
+					pID:        chat.DerivePeerID(m.InternalChatID, currentUserID),
+				}
+			}
+		}
+	}
 
 	if startID != 0 {
 		if peerID != 0 {
