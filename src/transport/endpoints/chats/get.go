@@ -64,8 +64,10 @@ func GetConversations(c *gin.Context, r *core.BaseHandler) {
 				conversation_members.left_at IS NULL
 				AND (
 					conversation_members.internal_chat_id LIKE 'c%'
-					OR COALESCE(conversation_members.deleted_before_id, 0) = 0
-					OR COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > conversation_members.deleted_before_id
+					OR (
+						COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > 0
+						AND COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > COALESCE(conversation_members.deleted_before_id, 0)
+					)
 				)
 			)
 			OR
@@ -102,12 +104,17 @@ func GetConversations(c *gin.Context, r *core.BaseHandler) {
 		query = query.Where("conversation_members.left_at IS NULL AND COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > COALESCE(conversation_members.last_read_id, 0) AND COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > COALESCE(conversation_members.deleted_before_id, 0)")
 	}
 
-	err := query.Order(`messages.created_at DESC, messages.id DESC, (
-		CASE 
-			WHEN conversation_members.left_at IS NULL THEN COALESCE(conversations.last_message_id, conversation_members.last_message_id)
-			ELSE COALESCE(NULLIF(conversation_members.last_message_id, 0), (SELECT MAX(end_local_id) FROM conversation_member_periods WHERE internal_chat_id = conversation_members.internal_chat_id AND user_id = conversation_members.user_id), conversations.last_message_id)
-		END
-	) DESC`).
+	err := query.Order(`
+		COALESCE(messages.created_at, conversation_members.joined_at, conversations.created_at, '1970-01-01 00:00:00') DESC,
+		COALESCE(messages.id, 0) DESC,
+		(
+			CASE 
+				WHEN conversation_members.left_at IS NULL THEN COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0)
+				ELSE COALESCE(NULLIF(conversation_members.last_message_id, 0), (SELECT MAX(end_local_id) FROM conversation_member_periods WHERE internal_chat_id = conversation_members.internal_chat_id AND user_id = conversation_members.user_id), conversations.last_message_id, 0)
+			END
+		) DESC,
+		conversation_members.internal_chat_id DESC
+	`).
 		Preload("Conversation").
 		Limit(count).Offset(offset).Find(&rows).Error
 
