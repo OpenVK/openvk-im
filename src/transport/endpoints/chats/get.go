@@ -128,7 +128,75 @@ func GetConversations(c *gin.Context, r *core.BaseHandler) {
 		return
 	}
 
-	totalCount := rows[0].TotalCount
+	// Deduplicate rows by InternalChatID preserving order.
+	// Duplicate rows can appear when the conversations table has more than one
+	// row with the same internal_id (a known artifact of the legacy migration),
+	// because GORM's Preload expands the result set for every matched Conversation.
+	{
+		seen := make(map[string]struct{}, len(rows))
+		deduped := rows[:0]
+		for _, row := range rows {
+			if _, ok := seen[row.InternalChatID]; ok {
+				continue
+			}
+			seen[row.InternalChatID] = struct{}{}
+			deduped = append(deduped, row)
+		}
+		rows = deduped
+	}
+
+	if len(rows) == 0 {
+		c.JSON(http.StatusOK, gin.H{"response": gin.H{"count": 0, "items": []interface{}{}, "unread_count": 0}})
+		return
+	}
+
+	// Use a separate DISTINCT count instead of the window-function value, which
+	// can be inflated when the conversations table contains duplicate internal_id
+	// rows (a known artifact of the legacy migration).
+	var totalCount int64
+	if currentUserID == 0 {
+		db.Instance.Table("conversations").Count(&totalCount)
+	} else {
+		totalCountQuery := db.Instance.Table("conversation_members").
+			Select("COUNT(DISTINCT conversation_members.internal_chat_id)").
+			Joins("LEFT JOIN conversations ON conversations.internal_id = conversation_members.internal_chat_id").
+			Where("conversation_members.user_id = ?", currentUserID).
+			Where(`(
+				(
+					conversation_members.left_at IS NULL
+					AND (
+						conversation_members.internal_chat_id LIKE 'c%'
+						OR (
+							COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > 0
+							AND COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > COALESCE(conversation_members.deleted_before_id, 0)
+						)
+					)
+				)
+				OR
+				(
+					conversation_members.left_at IS NOT NULL
+					AND conversation_members.internal_chat_id LIKE 'c%'
+					AND (
+						COALESCE(conversation_members.deleted_before_id, 0) = 0
+						OR
+						EXISTS (
+							SELECT 1 FROM messages m
+							WHERE m.chat_id = conversation_members.internal_chat_id
+								AND m.deleted_at IS NULL
+								AND m.local_id > COALESCE(conversation_members.deleted_before_id, 0)
+								AND (
+									NOT EXISTS (SELECT 1 FROM conversation_member_periods p0 WHERE p0.internal_chat_id = conversation_members.internal_chat_id AND p0.user_id = conversation_members.user_id)
+									OR EXISTS (SELECT 1 FROM conversation_member_periods p WHERE p.internal_chat_id = conversation_members.internal_chat_id AND p.user_id = conversation_members.user_id AND m.local_id >= p.start_local_id AND (p.end_local_id IS NULL OR m.local_id <= p.end_local_id))
+								)
+						)
+					)
+				)
+			)`)
+		if filter == "unread" {
+			totalCountQuery = totalCountQuery.Where("conversation_members.left_at IS NULL AND COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > COALESCE(conversation_members.last_read_id, 0) AND COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > COALESCE(conversation_members.deleted_before_id, 0)")
+		}
+		totalCountQuery.Scan(&totalCount)
+	}
 	var totalUnreadConversations int64
 	if currentUserID != 0 {
 		unreadConvQ := db.Instance.Table("messages").
@@ -868,7 +936,10 @@ func GetConversationsById(c *gin.Context, r *core.BaseHandler) {
 		canWriteObj := gin.H{"allowed": true}
 		stateStr := "in"
 		if getPeerType(m.InternalChatID) == "chat" {
-			if m.LeftAt != nil || (m.UserID != currentUserID && currentUserID != 0) {
+			if m.JoinedAt.IsZero() || (m.UserID != currentUserID && currentUserID != 0) {
+				stateStr = "out"
+				canWriteObj = gin.H{"allowed": false, "reason": 917}
+			} else if m.LeftAt != nil {
 				stateStr = "left"
 				canWriteObj = gin.H{"allowed": false, "reason": 916}
 				var lastKickMsg db_models.Message

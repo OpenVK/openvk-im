@@ -171,7 +171,7 @@ func (c *Conversation) ToVKApiStruct(tx *gorm.DB, currentUserID int64, member *C
 		OutReadCmid:               outReadCmid,
 	}
 
-	if member != nil {
+	if member != nil && !member.JoinedAt.IsZero() {
 		if member.LeftAt != nil {
 			conv.CanWrite = VKCanWrite{
 				Allowed: false,
@@ -190,7 +190,7 @@ func (c *Conversation) ToVKApiStruct(tx *gorm.DB, currentUserID int64, member *C
 	}
 
 	var unreadCount int64
-	if member != nil && member.LeftAt == nil {
+	if member != nil && !member.JoinedAt.IsZero() && member.LeftAt == nil {
 		unreadQ := tx.Model(&Message{}).
 			Where("chat_id = ? AND local_id > ? AND from_id != ?", c.InternalID, member.LastReadID, currentUserID)
 		if member.DeletedBeforeID > 0 {
@@ -206,18 +206,23 @@ func (c *Conversation) ToVKApiStruct(tx *gorm.DB, currentUserID int64, member *C
 			Title: c.Title,
 		}
 
-		if member == nil || member.LeftAt != nil {
-			settings.State = "left"
-			conv.CanWrite.Reason = 916
-			var lastKickMsg Message
-			if errK := tx.Where("chat_id = ? AND action = ? AND action_mid = ?", c.InternalID, "chat_kick_user", currentUserID).Order("local_id DESC").First(&lastKickMsg).Error; errK == nil && lastKickMsg.ID > 0 {
-				if lastKickMsg.FromID != currentUserID {
-					settings.State = "kicked"
-					conv.CanWrite.Reason = 915
+		if member != nil && !member.JoinedAt.IsZero() {
+			if member.LeftAt != nil {
+				settings.State = "left"
+				conv.CanWrite.Reason = 916
+				var lastKickMsg Message
+				if errK := tx.Where("chat_id = ? AND action = ? AND action_mid = ?", c.InternalID, "chat_kick_user", currentUserID).Order("local_id DESC").First(&lastKickMsg).Error; errK == nil && lastKickMsg.ID > 0 {
+					if lastKickMsg.FromID != currentUserID {
+						settings.State = "kicked"
+						conv.CanWrite.Reason = 915
+					}
 				}
+			} else {
+				settings.State = "in"
 			}
 		} else {
-			settings.State = "in"
+			settings.State = "out"
+			conv.CanWrite.Reason = 917
 		}
 
 		var mCount int64

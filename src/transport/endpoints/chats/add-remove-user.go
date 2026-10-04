@@ -30,24 +30,73 @@ func AddChatUser(c *gin.Context, r *core.BaseHandler) {
 	}
 	chatID := chat.GetInternalChatID(peerID, currentUserID)
 
-	var targetMember db_models.ConversationMember
-	if errM := r.DB.Where("internal_chat_id = ? AND user_id = ?", chatID, userID).First(&targetMember).Error; errM == nil {
-		if targetMember.LeftAt != nil {
+	conv, errC := chat.GetConversation(nil, chatID)
+	if errC != nil || conv == nil {
+		r.Reject(c, 917, "Chat not found")
+		return
+	}
+
+	var messageText string
+	action := "chat_invite_user"
+
+	if currentUserID == userID {
+		// User is returning to chat (self-rejoin)
+		var targetMember db_models.ConversationMember
+		if errM := r.DB.Where("internal_chat_id = ? AND user_id = ?", chatID, userID).First(&targetMember).Error; errM != nil {
+			// User was NEVER a member of this chat -> cannot self-join without invite link!
+			r.Reject(c, 15, "Access denied: you cannot join this chat (you were never a member)")
+			return
+		}
+
+		if targetMember.LeftAt == nil {
+			r.Reject(c, 15, "User is already in the chat")
+			return
+		}
+
+		var lastKickMsg db_models.Message
+		if errK := r.DB.Where("chat_id = ? AND action = ? AND action_mid = ?", chatID, "chat_kick_user", userID).Order("local_id DESC").First(&lastKickMsg).Error; errK == nil && lastKickMsg.ID > 0 {
+			if lastKickMsg.FromID != userID {
+				r.Reject(c, 15, "Access denied: you have been kicked from this chat")
+				return
+			}
+		}
+
+		messageText = "returned to the chat"
+	} else {
+		// Inviter is inviting another user
+		inviterMember, errI := chat.GetMember(nil, chatID, currentUserID)
+		if errI != nil || inviterMember == nil || inviterMember.LeftAt != nil {
+			r.Reject(c, 15, "Access denied: you are not in this chat")
+			return
+		}
+
+		isOwner := conv.OwnerID != nil && currentUserID == *conv.OwnerID
+		isAdmin := inviterMember.IsAdmin || isOwner
+		perms := ParseChatPermissions([]byte(conv.Settings))
+		if !CheckPermission(perms.Invite, isOwner, isAdmin, true) {
+			r.Reject(c, 15, "Access denied: you don't have permission to invite users to this chat")
+			return
+		}
+
+		var targetMember db_models.ConversationMember
+		if errM := r.DB.Where("internal_chat_id = ? AND user_id = ?", chatID, userID).First(&targetMember).Error; errM == nil {
+			if targetMember.LeftAt == nil {
+				r.Reject(c, 15, "User is already in the chat")
+				return
+			}
+
 			var lastKickMsg db_models.Message
 			if errK := r.DB.Where("chat_id = ? AND action = ? AND action_mid = ?", chatID, "chat_kick_user", userID).Order("local_id DESC").First(&lastKickMsg).Error; errK == nil && lastKickMsg.ID > 0 {
 				if lastKickMsg.FromID != userID {
-					if currentUserID == userID {
-						r.Reject(c, 15, "Access denied: you have been kicked from this chat")
-						return
-					}
-					inviterMember, errI := chat.GetMember(nil, chatID, currentUserID)
-					if errI != nil || inviterMember == nil || !inviterMember.IsAdmin {
+					if !isAdmin {
 						r.Reject(c, 15, "Access denied: only administrators can invite kicked users")
 						return
 					}
 				}
 			}
 		}
+
+		messageText = "invited user " + strconv.FormatInt(userID, 10)
 	}
 
 	var visibleCount int64
@@ -58,14 +107,12 @@ func AddChatUser(c *gin.Context, r *core.BaseHandler) {
 	}
 	canSeeHistory := visibleCount > 0
 
-	messageText := "invited user " + strconv.FormatInt(userID, 10)
-
 	msg, err := chat.AddUserToConversation(
 		chatID,
 		userID,
 		currentUserID,
 		messageText,
-		"chat_invite_user",
+		action,
 		userID,
 		"",
 		canSeeHistory,

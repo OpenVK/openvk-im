@@ -237,6 +237,9 @@ func AddUserToConversation(chatID string, userID int64, inviterID int64, text st
 		}
 
 		isNewMember := errors.Is(findErr, gorm.ErrRecordNotFound)
+		if isNewMember && inviterID == userID && action != "chat_invite_user_by_link" {
+			return errors.New("cannot self-join a conversation you were never a member of")
+		}
 
 		localID, err := NextLocalID(tx, chatID, inviterID)
 		if err != nil {
