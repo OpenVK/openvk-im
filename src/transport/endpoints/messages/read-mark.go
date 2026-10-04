@@ -55,7 +55,7 @@ func MarkAsRead(c *gin.Context, r *core.BaseHandler) {
 				COALESCE(conversations.last_message_id, 0) as conv_last_message_id,
 				COALESCE(conversation_members.last_message_id, 0) as mem_last_message_id
 			`).
-			Joins("LEFT JOIN conversations ON conversations.internal_id = conversation_members.internal_chat_id").
+			Joins("LEFT JOIN (SELECT internal_id, MAX(last_message_id) as last_message_id FROM conversations GROUP BY internal_id) conversations ON conversations.internal_id = conversation_members.internal_chat_id").
 			Where("conversation_members.user_id = ? AND conversation_members.left_at IS NULL", currentUserID).
 			Where("COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > COALESCE(conversation_members.last_read_id, 0)").
 			Where("COALESCE(conversations.last_message_id, conversation_members.last_message_id, 0) > COALESCE(conversation_members.deleted_before_id, 0)").

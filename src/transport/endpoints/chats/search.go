@@ -42,7 +42,7 @@ func SearchConversations(c *gin.Context, r *core.BaseHandler) {
 		}
 	} else {
 		query := db.Instance.Table("conversation_members").
-			Joins("LEFT JOIN conversations ON conversations.internal_id = conversation_members.internal_chat_id").
+			Joins("LEFT JOIN (SELECT internal_id, MAX(last_message_id) as last_message_id, MAX(title) as title FROM conversations GROUP BY internal_id) conversations ON conversations.internal_id = conversation_members.internal_chat_id").
 			Where("conversation_members.user_id = ?", currentUserID).
 			Where(`(
 				(

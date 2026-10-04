@@ -13,6 +13,7 @@ import (
 	"ovk-im/src/transport/endpoints/core"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func GetConversations(c *gin.Context, r *core.BaseHandler) {
@@ -51,7 +52,7 @@ func GetConversations(c *gin.Context, r *core.BaseHandler) {
 			END as conv_last_message_id,
 			COUNT(*) OVER() as total_count
 		`).
-		Joins("LEFT JOIN conversations ON conversations.internal_id = conversation_members.internal_chat_id").
+		Joins("LEFT JOIN (SELECT internal_id, MAX(last_message_id) as last_message_id, MAX(created_at) as created_at, MAX(pinned_msg_id) as pinned_msg_id FROM conversations GROUP BY internal_id) conversations ON conversations.internal_id = conversation_members.internal_chat_id").
 		Joins(`LEFT JOIN messages ON messages.chat_id = conversation_members.internal_chat_id AND messages.local_id = (
 			CASE 
 				WHEN conversation_members.left_at IS NULL THEN COALESCE(conversations.last_message_id, conversation_members.last_message_id)
@@ -115,7 +116,9 @@ func GetConversations(c *gin.Context, r *core.BaseHandler) {
 		) DESC,
 		conversation_members.internal_chat_id DESC
 	`).
-		Preload("Conversation").
+		Preload("Conversation", func(db *gorm.DB) *gorm.DB {
+			return db.Order("conversations.last_message_id DESC, conversations.id DESC")
+		}).
 		Limit(count).Offset(offset).Find(&rows).Error
 
 	if err != nil {
@@ -159,7 +162,7 @@ func GetConversations(c *gin.Context, r *core.BaseHandler) {
 	} else {
 		totalCountQuery := db.Instance.Table("conversation_members").
 			Select("COUNT(DISTINCT conversation_members.internal_chat_id)").
-			Joins("LEFT JOIN conversations ON conversations.internal_id = conversation_members.internal_chat_id").
+			Joins("LEFT JOIN (SELECT internal_id, MAX(last_message_id) as last_message_id FROM conversations GROUP BY internal_id) conversations ON conversations.internal_id = conversation_members.internal_chat_id").
 			Where("conversation_members.user_id = ?", currentUserID).
 			Where(`(
 				(
@@ -384,7 +387,7 @@ func GetConversations(c *gin.Context, r *core.BaseHandler) {
 		m := row.ConversationMember
 		conv := m.Conversation
 		if conv.InternalID == "" {
-			db.Instance.Where("internal_id = ?", m.InternalChatID).First(&conv)
+			db.Instance.Where("internal_id = ?", m.InternalChatID).Order("last_message_id DESC, id DESC").First(&conv)
 		}
 		pID := chat.DerivePeerID(m.InternalChatID, currentUserID)
 		lastMsg, hasMsg := msgMap[m.InternalChatID]
@@ -666,7 +669,9 @@ func GetConversationsById(c *gin.Context, r *core.BaseHandler) {
 		}
 	} else {
 		err = db.Instance.Where("user_id = ? AND internal_chat_id IN ?", currentUserID, targetChatIDs).
-			Preload("Conversation").
+			Preload("Conversation", func(db *gorm.DB) *gorm.DB {
+				return db.Order("conversations.last_message_id DESC, conversations.id DESC")
+			}).
 			Find(&rows).Error
 		if err == nil {
 			foundChatIDs := make(map[string]bool, len(rows))
