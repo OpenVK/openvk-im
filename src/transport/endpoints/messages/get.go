@@ -29,15 +29,20 @@ func Get(c *gin.Context, r *core.BaseHandler) {
 	lastMessageID, _ := strconv.ParseUint(c.DefaultQuery("last_message_id", "0"), 10, 64)
 	previewLength, _ := strconv.Atoi(c.DefaultQuery("preview_length", "0"))
 
-	query := dbx.Instance.Table("messages").
-		Joins("JOIN conversation_members ON conversation_members.internal_chat_id = messages.chat_id AND conversation_members.user_id = ? AND conversation_members.left_at IS NULL", currentUserID).
-		Where("messages.deleted_at IS NULL").
-		Where("messages.local_id > COALESCE(conversation_members.deleted_before_id, 0)")
-
-	if out == 1 {
-		query = query.Where("messages.from_id = ?", currentUserID)
+	var query *gorm.DB
+	if currentUserID == 0 {
+		query = dbx.Instance.Table("messages")
 	} else {
-		query = query.Where("messages.from_id != ?", currentUserID)
+		query = dbx.Instance.Table("messages").
+			Joins("JOIN conversation_members ON conversation_members.internal_chat_id = messages.chat_id AND conversation_members.user_id = ? AND conversation_members.left_at IS NULL", currentUserID).
+			Where("messages.deleted_at IS NULL").
+			Where("messages.local_id > COALESCE(conversation_members.deleted_before_id, 0)")
+
+		if out == 1 {
+			query = query.Where("messages.from_id = ?", currentUserID)
+		} else {
+			query = query.Where("messages.from_id != ?", currentUserID)
+		}
 	}
 
 	if timeOffset > 0 {

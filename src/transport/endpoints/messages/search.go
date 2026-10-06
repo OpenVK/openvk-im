@@ -61,9 +61,11 @@ func Search(c *gin.Context, r *core.BaseHandler) {
 			Pluck("internal_id", &matchedChatIDs).Error
 
 		if len(matchedChatIDs) > 0 {
-			_ = db.Instance.Model(&db_models.Message{}).
-				Where("chat_id IN ? AND deleted_at IS NULL", matchedChatIDs).
-				Pluck("id", &chatMsgIDs).Error
+			qDel := db.Instance.Model(&db_models.Message{}).Where("chat_id IN ?", matchedChatIDs)
+			if currentUserID != 0 {
+				qDel = qDel.Where("deleted_at IS NULL")
+			}
+			_ = qDel.Pluck("id", &chatMsgIDs).Error
 		}
 
 		idSet := make(map[uint64]bool)
@@ -107,9 +109,11 @@ func Search(c *gin.Context, r *core.BaseHandler) {
 			Pluck("internal_id", &matchedChatIDs).Error
 
 		if len(matchedChatIDs) > 0 {
-			_ = db.Instance.Model(&db_models.Message{}).
-				Where("chat_id IN ? AND deleted_at IS NULL", matchedChatIDs).
-				Pluck("id", &chatMsgIDs).Error
+			qDel := db.Instance.Model(&db_models.Message{}).Where("chat_id IN ?", matchedChatIDs)
+			if currentUserID != 0 {
+				qDel = qDel.Where("deleted_at IS NULL")
+			}
+			_ = qDel.Pluck("id", &chatMsgIDs).Error
 		}
 
 		idSet := make(map[uint64]bool)

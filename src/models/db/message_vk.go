@@ -26,6 +26,7 @@ type VKApiMessage struct {
 	RandomID              int64          `json:"random_id,omitempty"`
 	Attachments           string         `json:"attachments"`
 	Important             bool           `json:"important"`
+	Deleted               int            `json:"deleted,omitempty"`
 	IsPinned              int            `json:"is_pinned,omitempty"`
 	ReplyMessage          *VKApiMessage  `json:"reply_message,omitempty"`
 	ForwardMessages       []VKApiMessage `json:"fwd_messages,omitempty"`
@@ -35,31 +36,31 @@ type VKApiMessage struct {
 
 // VKApiMessageLegacy represents the legacy VK API message format for versions < 5.80 (e.g. 5.20).
 type VKApiMessageLegacy struct {
-	ID              uint64               `json:"id"`
-	Date            int64                `json:"date"`
-	Out             int                  `json:"out"`
-	UserID          int64                `json:"user_id"`
-	FromID          int64                `json:"from_id,omitempty"`
-	ReadState       int                  `json:"read_state"`
-	Title           string               `json:"title,omitempty"`
-	Body            string               `json:"body"`
-	Attachments     string               `json:"attachments"`
-	ForwardMessages []VKApiMessageLegacy `json:"fwd_messages,omitempty"`
-	HasForwardMessages bool              `json:"has_fwd_messages,omitempty"`
-	Important       bool                 `json:"important,omitempty"`
-	Deleted         int                  `json:"deleted"`
-	Emoji           int                  `json:"emoji"`
-	ChatID          int64                `json:"chat_id,omitempty"`
-	ChatActive      []int64              `json:"chat_active,omitempty"`
-	UsersCount      int                  `json:"users_count,omitempty"`
-	AdminID         int64                `json:"admin_id,omitempty"`
-	Action          interface{}          `json:"action,omitempty"`
-	ActionMid       int64                `json:"action_mid,omitempty"`
-	ActionEmail     string               `json:"action_email,omitempty"`
-	ActionText      string               `json:"action_text,omitempty"`
-	Photo50         string               `json:"photo_50,omitempty"`
-	Photo100        string               `json:"photo_100,omitempty"`
-	Photo200        string               `json:"photo_200,omitempty"`
+	ID                 uint64               `json:"id"`
+	Date               int64                `json:"date"`
+	Out                int                  `json:"out"`
+	UserID             int64                `json:"user_id"`
+	FromID             int64                `json:"from_id,omitempty"`
+	ReadState          int                  `json:"read_state"`
+	Title              string               `json:"title,omitempty"`
+	Body               string               `json:"body"`
+	Attachments        string               `json:"attachments"`
+	ForwardMessages    []VKApiMessageLegacy `json:"fwd_messages,omitempty"`
+	HasForwardMessages bool                 `json:"has_fwd_messages,omitempty"`
+	Important          bool                 `json:"important,omitempty"`
+	Deleted            int                  `json:"deleted"`
+	Emoji              int                  `json:"emoji"`
+	ChatID             int64                `json:"chat_id,omitempty"`
+	ChatActive         []int64              `json:"chat_active,omitempty"`
+	UsersCount         int                  `json:"users_count,omitempty"`
+	AdminID            int64                `json:"admin_id,omitempty"`
+	Action             interface{}          `json:"action,omitempty"`
+	ActionMid          int64                `json:"action_mid,omitempty"`
+	ActionEmail        string               `json:"action_email,omitempty"`
+	ActionText         string               `json:"action_text,omitempty"`
+	Photo50            string               `json:"photo_50,omitempty"`
+	Photo100           string               `json:"photo_100,omitempty"`
+	Photo200           string               `json:"photo_200,omitempty"`
 }
 
 type MemberReadState struct {
@@ -253,6 +254,19 @@ func (m *Message) ToVKApiStructBatch(tx *gorm.DB, depth int, currentUserID int64
 		}
 	}
 
+	isDeleted := m.DeletedAt != nil || (m.Flags&128) != 0
+	deletedFlag := 0
+	if isDeleted {
+		deletedFlag = 1
+	}
+
+	text := string(m.Text)
+	attachments := string(m.Attachments)
+	if isDeleted && currentUserID != 0 {
+		text = ""
+		attachments = ""
+	}
+
 	vkMsg := VKApiMessage{
 		ID:                    m.ID,
 		ConversationMessageID: m.LocalID,
@@ -260,10 +274,11 @@ func (m *Message) ToVKApiStructBatch(tx *gorm.DB, depth int, currentUserID int64
 		Date:                  m.CreatedAt.Unix(),
 		PeerID:                requestedPeerID,
 		FromID:                m.FromID,
-		Text:                  string(m.Text),
+		Text:                  text,
 		RandomID:              m.RandomID,
 		Important:             isImp,
-		Attachments:           string(m.Attachments),
+		Attachments:           attachments,
+		Deleted:               deletedFlag,
 	}
 
 	if m.FromID == currentUserID {
@@ -393,7 +408,7 @@ func (m *Message) ToVKApiStructBatchLegacy(tx *gorm.DB, depth int, currentUserID
 		}
 	}
 
-	isDeleted := m.DeletedAt != nil
+	isDeleted := m.DeletedAt != nil || (m.Flags&128) != 0
 	deletedFlag := 0
 	if isDeleted {
 		deletedFlag = 1
@@ -401,7 +416,7 @@ func (m *Message) ToVKApiStructBatchLegacy(tx *gorm.DB, depth int, currentUserID
 
 	body := string(m.Text)
 	attachments := string(m.Attachments)
-	if isDeleted {
+	if isDeleted && currentUserID != 0 {
 		body = ""
 		attachments = ""
 		hasEmoji = 0
