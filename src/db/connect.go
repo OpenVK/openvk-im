@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
+
 	env "ovk-im/src/config"
 
 	"gorm.io/driver/mysql"
@@ -19,8 +21,17 @@ func Connect() {
 	host := env.Get("DB_HOST", "127.0.0.1")
 	port := env.Get("DB_PORT", "3306")
 	name := env.Get("DB_NAME", "openvk_im")
+	socket := strings.TrimSpace(env.Get("DB_SOCKET", ""))
 
-	dsnNoDb := fmt.Sprintf("%s:%s@tcp(%s:%s)/?charset=utf8mb4&parseTime=True&loc=Local", user, pass, host, port)
+	var dsnNoDb, dsn string
+	if socket != "" {
+		dsnNoDb = fmt.Sprintf("%s:%s@unix(%s)/?charset=utf8mb4&parseTime=True&loc=Local", user, pass, socket)
+		dsn = fmt.Sprintf("%s:%s@unix(%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", user, pass, socket, name)
+	} else {
+		dsnNoDb = fmt.Sprintf("%s:%s@tcp(%s:%s)/?charset=utf8mb4&parseTime=True&loc=Local", user, pass, host, port)
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", user, pass, host, port, name)
+	}
+
 	tmpDb, err := sql.Open("mysql", dsnNoDb)
 	if err != nil {
 		log.Fatalf("Failed to connect to MySQL server: %v", err)
@@ -31,8 +42,6 @@ func Connect() {
 		log.Fatalf("Failed to create database: %v", err)
 	}
 	tmpDb.Close()
-
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", user, pass, host, port, name)
 
 	logLevel := logger.Error
 	if env.IsDev() {
@@ -49,5 +58,9 @@ func Connect() {
 	}
 
 	Instance = dbConn
-	log.Printf("Database '%s' connected\n", name)
+	if socket != "" {
+		log.Printf("Database '%s' connected via socket '%s'\n", name, socket)
+	} else {
+		log.Printf("Database '%s' connected via %s:%s\n", name, host, port)
+	}
 }

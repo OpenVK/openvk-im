@@ -3,6 +3,7 @@ package db_migrate
 import (
 	"fmt"
 	"log"
+	"strings"
 	env "ovk-im/src/config"
 	dbx "ovk-im/src/db"
 	dbm "ovk-im/src/models/db"
@@ -69,8 +70,14 @@ func MigrateFromLegacy() {
 	pass := env.Get("DB_PASS", "")
 	host := env.Get("DB_HOST", "127.0.0.1")
 	port := env.Get("DB_PORT", "3306")
+	socket := strings.TrimSpace(env.Get("DB_SOCKET", ""))
 
-	legacyDSN := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", user, pass, host, port, "openvk")
+	var legacyDSN string
+	if socket != "" {
+		legacyDSN = fmt.Sprintf("%s:%s@unix(%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", user, pass, socket, "openvk")
+	} else {
+		legacyDSN = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local", user, pass, host, port, "openvk")
+	}
 	legacyDB, err := gorm.Open(mysql.Open(legacyDSN), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Failed to connect to legacy database: %v", err)

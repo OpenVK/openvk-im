@@ -109,11 +109,13 @@ cp .env.example .env
 | :--- | :--- | :--- |
 | `DB_USER` | `root` | MySQL database username |
 | `DB_PASS` | `root` | MySQL database password |
-| `DB_HOST` | `127.0.0.1` | MySQL host address |
-| `DB_PORT` | `3306` | MySQL port |
+| `DB_HOST` | `127.0.0.1` | MySQL host address (used if `DB_SOCKET` is empty) |
+| `DB_PORT` | `3306` | MySQL port (used if `DB_SOCKET` is empty) |
+| `DB_SOCKET` | _(empty)_ | MySQL UNIX domain socket path (e.g. `/var/run/mysqld/mysqld.sock`). Takes priority over host/port |
 | `DB_NAME` | `openvk_im` | Database name for OpenVK-IM |
-| `REDIS_HOST` | `127.0.0.1` | Redis server host |
-| `REDIS_PORT` | `6379` | Redis server port |
+| `REDIS_HOST` | `127.0.0.1` | Redis server host (used if `REDIS_SOCKET` is empty) |
+| `REDIS_PORT` | `6379` | Redis server port (used if `REDIS_SOCKET` is empty) |
+| `REDIS_SOCKET` | _(empty)_ | Redis UNIX domain socket path (e.g. `/var/run/redis/redis.sock`). Takes priority over host/port |
 | `REDIS_PASS` | _(empty)_ | Redis password (if configured) |
 | `REDIS_DB` | `0` | Redis database index |
 | `APP_PORT` | `8080` | Port on which the HTTP server listens |

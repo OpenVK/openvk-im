@@ -109,11 +109,13 @@ cp .env.example .env
 | :--- | :--- | :--- |
 | `DB_USER` | `root` | Имя пользователя базы данных MySQL |
 | `DB_PASS` | `root` | Пароль базы данных MySQL |
-| `DB_HOST` | `127.0.0.1` | Хост базы данных MySQL |
-| `DB_PORT` | `3306` | Порт базы данных MySQL |
+| `DB_HOST` | `127.0.0.1` | Хост базы данных MySQL (используется, если `DB_SOCKET` пуст) |
+| `DB_PORT` | `3306` | Порт базы данных MySQL (используется, если `DB_SOCKET` пуст) |
+| `DB_SOCKET` | _(пусто)_ | Путь к UNIX-сокету MySQL (например `/var/run/mysqld/mysqld.sock`). Имеет приоритет над хостом/портом |
 | `DB_NAME` | `openvk_im` | Имя базы данных для OpenVK-IM |
-| `REDIS_HOST` | `127.0.0.1` | Хост сервера Redis |
-| `REDIS_PORT` | `6379` | Порт сервера Redis |
+| `REDIS_HOST` | `127.0.0.1` | Хост сервера Redis (используется, если `REDIS_SOCKET` пуст) |
+| `REDIS_PORT` | `6379` | Порт сервера Redis (используется, если `REDIS_SOCKET` пуст) |
+| `REDIS_SOCKET` | _(пусто)_ | Путь к UNIX-сокету Redis (например `/var/run/redis/redis.sock`). Имеет приоритет над хостом/портом |
 | `REDIS_PASS` | _(пусто)_ | Пароль Redis (если настроен) |
 | `REDIS_DB` | `0` | Номер базы данных Redis |
 | `APP_PORT` | `8080` | Порт, на котором запускается HTTP-сервер |

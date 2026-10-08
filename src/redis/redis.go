@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
-	env "ovk-im/src/config"
 	"strconv"
+	"strings"
 	"time"
+
+	env "ovk-im/src/config"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -21,14 +23,24 @@ func Init() {
 	port := env.Get("REDIS_PORT", "6379")
 	pass := env.Get("REDIS_PASS", "")
 	db := env.Get("REDIS_DB", "0")
+	socket := strings.TrimSpace(env.Get("REDIS_SOCKET", ""))
 	dbn, _ := strconv.Atoi(db)
 
-	Client = redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", host, port),
+	opts := &redis.Options{
 		Password: pass,
 		DB:       dbn,
 		PoolSize: 50,
-	})
+	}
+
+	if socket != "" {
+		opts.Network = "unix"
+		opts.Addr = socket
+	} else {
+		opts.Network = "tcp"
+		opts.Addr = fmt.Sprintf("%s:%s", host, port)
+	}
+
+	Client = redis.NewClient(opts)
 
 	ctx, cancel := context.WithTimeout(Ctx, 5*time.Second)
 	defer cancel()
@@ -37,5 +49,9 @@ func Init() {
 		log.Fatalf("Redis connection failed: %v", err)
 	}
 
-	log.Printf("Redis connected to %s:%s (db: %d)", host, port, dbn)
+	if socket != "" {
+		log.Printf("Redis connected via socket '%s' (db: %d)", socket, dbn)
+	} else {
+		log.Printf("Redis connected to %s:%s (db: %d)", host, port, dbn)
+	}
 }
