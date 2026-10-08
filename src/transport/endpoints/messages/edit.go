@@ -62,6 +62,12 @@ func Edit(c *gin.Context, r *core.BaseHandler) {
 		return
 	}
 
+	existingAttach := string(msg.Attachments)
+	if strings.HasPrefix(existingAttach, "sticker") || strings.HasPrefix(existingAttach, "gift") || strings.Contains(existingAttach, "\"sticker\"") || strings.Contains(existingAttach, "\"gift\"") {
+		r.Reject(c, 920, "Can't edit message with special attachments")
+		return
+	}
+
 	updates := make(map[string]interface{})
 
 	finalText := string(msg.Text)
