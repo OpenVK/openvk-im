@@ -104,8 +104,9 @@ func LongPollHandler(
 			TS:      newTS,
 			Updates: packUpdates(updates),
 		}
-		if currentPTS > 0 {
-			resp.PTS = currentPTS
+		resp.PTS = currentPTS
+		if resp.PTS == 0 {
+			resp.PTS = newTS
 		}
 
 		json.NewEncoder(w).Encode(resp)
@@ -121,8 +122,9 @@ func LongPollHandler(
 			TS:      latestTS,
 			Updates: packUpdates(freshUpdates),
 		}
-		if currentPTS > 0 {
-			resp.PTS = currentPTS
+		resp.PTS = currentPTS
+		if resp.PTS == 0 {
+			resp.PTS = latestTS
 		}
 
 		json.NewEncoder(w).Encode(resp)
@@ -135,6 +137,7 @@ func LongPollHandler(
 
 		json.NewEncoder(w).Encode(lp_models.Envelope{
 			TS:      currentTS,
+			PTS:     currentTS,
 			Updates: []json.RawMessage{},
 		})
 

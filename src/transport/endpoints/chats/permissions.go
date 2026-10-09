@@ -125,5 +125,18 @@ func ComputeChatACL(p ChatPermissions, isOwner bool, isAdmin bool, isMember bool
 		"can_copy_chat":          isMember && (isOwner || isAdmin),
 		"can_call":               CheckPermission(p.Call, isOwner, isAdmin, isMember),
 		"can_use_mass_mentions":  CheckPermission(p.UseMassMentions, isOwner, isAdmin, isMember),
+		"can_change_owner":                    isOwner,
+		"can_change_service_type":             isOwner,
+		"can_change_style":                    isMember && (isOwner || isAdmin),
+		"can_change_stickers_popup_autoplay":  isMember,
+		"can_disable_forward_messages":        isMember && (isOwner || isAdmin),
+		"can_disable_service_messages":        isMember && (isOwner || isAdmin),
+		"can_finish_call":                     isMember && (isOwner || isAdmin),
+		"can_forward_messages":                isMember,
+		"can_hide":                            isMember,
+		"can_receive_money":                   false,
+		"can_send_money":                      false,
+		"can_send_reactions":                  isMember,
+		"can_write":                           isMember,
 	}
 }

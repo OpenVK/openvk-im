@@ -13,6 +13,7 @@ import (
 type VKApiMessage struct {
 	ID                    uint64         `json:"id"`
 	ConversationMessageID uint64         `json:"conversation_message_id"`
+	Version               uint64         `json:"version"`
 	GlobalID              uint64         `json:"global_id,omitempty"`
 	Date                  int64          `json:"date"`
 	IsEdited              bool           `json:"edited,omitempty"`
@@ -270,6 +271,7 @@ func (m *Message) ToVKApiStructBatch(tx *gorm.DB, depth int, currentUserID int64
 	vkMsg := VKApiMessage{
 		ID:                    m.ID,
 		ConversationMessageID: m.LocalID,
+		Version:               m.LocalID,
 		GlobalID:              m.ID,
 		Date:                  m.CreatedAt.Unix(),
 		PeerID:                requestedPeerID,

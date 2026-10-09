@@ -58,8 +58,8 @@ type VKApiPeer struct {
 
 type VKPushSettings struct {
 	DisabledUntil   int64 `json:"disabled_until"`
-	DisabledForever bool  `json:"disabled_forever,omitempty"`
-	NoSound         bool  `json:"no_sound,omitempty"`
+	DisabledForever bool  `json:"disabled_forever"`
+	NoSound         bool  `json:"no_sound"`
 	Sound           bool  `json:"sound"`
 }
 

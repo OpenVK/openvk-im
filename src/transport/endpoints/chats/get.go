@@ -500,8 +500,14 @@ func GetConversations(c *gin.Context, r *core.BaseHandler) {
 			}
 			isMember := stateStr == "in"
 
+			chatTitle := conv.Title
+			if chatTitle == "" {
+				chatTitle = fmt.Sprintf("Chat %d", m.InternalChatID)
+			}
 			chatSettingsObj := gin.H{
 				"members":       membersList,
+				"members_count": len(membersList),
+				"title":         chatTitle,
 				"admin_id":      adminMap[m.InternalChatID],
 				"owner_id":      ownerID,
 				"admin_ids":     adminIDs,
