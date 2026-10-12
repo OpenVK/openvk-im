@@ -302,6 +302,7 @@ func GetChatModerators(c *gin.Context, r *core.BaseHandler) {
 
 	var members []db_models.ConversationMember
 	db.Instance.Where("internal_chat_id = ? AND is_admin = ? AND left_at IS NULL", internalChatID, true).
+		Order("joined_at ASC").
 		Find(&members)
 
 	moderatorIDs := make([]int64, 0)

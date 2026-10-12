@@ -3,8 +3,10 @@ package chats
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"ovk-im/src/db"
 	db_models "ovk-im/src/models/db"
@@ -15,6 +17,29 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+func sortConversationMembers(members []db_models.ConversationMember, ownerID int64) {
+	sort.SliceStable(members, func(i, j int) bool {
+		rank := func(m db_models.ConversationMember) int {
+			if ownerID > 0 && m.UserID == ownerID {
+				return 0
+			}
+			if m.IsAdmin {
+				return 1
+			}
+			return 2
+		}
+		rI := rank(members[i])
+		rJ := rank(members[j])
+		if rI != rJ {
+			return rI < rJ
+		}
+		if !members[i].JoinedAt.Equal(members[j].JoinedAt) {
+			return members[i].JoinedAt.Before(members[j].JoinedAt)
+		}
+		return members[i].UserID < members[j].UserID
+	})
+}
 
 func GetConversations(c *gin.Context, r *core.BaseHandler) {
 	val, exists := c.Get("userID")
@@ -296,16 +321,14 @@ func GetConversations(c *gin.Context, r *core.BaseHandler) {
 		type ChatMember struct {
 			InternalChatID string
 			UserID         int64
+			IsAdmin        bool
+			JoinedAt       time.Time
 		}
 		var members []ChatMember
 		db.Instance.Table("conversation_members").
-			Select("internal_chat_id, user_id").
+			Select("internal_chat_id, user_id, is_admin, joined_at").
 			Where("internal_chat_id IN ? AND left_at IS NULL", chatIDsToFetchMembers).
 			Find(&members)
-
-		for _, m := range members {
-			chatMembersMap[m.InternalChatID] = append(chatMembersMap[m.InternalChatID], m.UserID)
-		}
 
 		type ChatMeta struct {
 			InternalID string
@@ -325,6 +348,37 @@ func GetConversations(c *gin.Context, r *core.BaseHandler) {
 				adminIDsMap[o.InternalID] = []int64{*o.OwnerID}
 			}
 			permissionsMap[o.InternalID] = ParseChatPermissions(o.Settings)
+		}
+
+		membersByChat := make(map[string][]ChatMember)
+		for _, m := range members {
+			membersByChat[m.InternalChatID] = append(membersByChat[m.InternalChatID], m)
+		}
+		for chatID, mList := range membersByChat {
+			ownerID := ownerMap[chatID]
+			sort.SliceStable(mList, func(i, j int) bool {
+				rank := func(m ChatMember) int {
+					if ownerID > 0 && m.UserID == ownerID {
+						return 0
+					}
+					if m.IsAdmin {
+						return 1
+					}
+					return 2
+				}
+				rI := rank(mList[i])
+				rJ := rank(mList[j])
+				if rI != rJ {
+					return rI < rJ
+				}
+				if !mList[i].JoinedAt.Equal(mList[j].JoinedAt) {
+					return mList[i].JoinedAt.Before(mList[j].JoinedAt)
+				}
+				return mList[i].UserID < mList[j].UserID
+			})
+			for _, m := range mList {
+				chatMembersMap[chatID] = append(chatMembersMap[chatID], m.UserID)
+			}
 		}
 
 		var admins []ChatMember
@@ -724,16 +778,14 @@ func GetConversationsById(c *gin.Context, r *core.BaseHandler) {
 		type ChatMember struct {
 			InternalChatID string
 			UserID         int64
+			IsAdmin        bool
+			JoinedAt       time.Time
 		}
 		var members []ChatMember
 		db.Instance.Table("conversation_members").
-			Select("internal_chat_id, user_id").
+			Select("internal_chat_id, user_id, is_admin, joined_at").
 			Where("internal_chat_id IN ? AND left_at IS NULL", chatIDsToFetchMembers).
 			Find(&members)
-
-		for _, m := range members {
-			chatMembersMap[m.InternalChatID] = append(chatMembersMap[m.InternalChatID], m.UserID)
-		}
 
 		type ChatMeta struct {
 			InternalID string
@@ -753,6 +805,37 @@ func GetConversationsById(c *gin.Context, r *core.BaseHandler) {
 				adminIDsMap[o.InternalID] = []int64{*o.OwnerID}
 			}
 			permissionsMap[o.InternalID] = ParseChatPermissions(o.Settings)
+		}
+
+		membersByChat := make(map[string][]ChatMember)
+		for _, m := range members {
+			membersByChat[m.InternalChatID] = append(membersByChat[m.InternalChatID], m)
+		}
+		for chatID, mList := range membersByChat {
+			ownerID := ownerMap[chatID]
+			sort.SliceStable(mList, func(i, j int) bool {
+				rank := func(m ChatMember) int {
+					if ownerID > 0 && m.UserID == ownerID {
+						return 0
+					}
+					if m.IsAdmin {
+						return 1
+					}
+					return 2
+				}
+				rI := rank(mList[i])
+				rJ := rank(mList[j])
+				if rI != rJ {
+					return rI < rJ
+				}
+				if !mList[i].JoinedAt.Equal(mList[j].JoinedAt) {
+					return mList[i].JoinedAt.Before(mList[j].JoinedAt)
+				}
+				return mList[i].UserID < mList[j].UserID
+			})
+			for _, m := range mList {
+				chatMembersMap[chatID] = append(chatMembersMap[chatID], m.UserID)
+			}
 		}
 
 		var admins []ChatMember
@@ -1077,6 +1160,7 @@ func GetConversationMembers(c *gin.Context, r *core.BaseHandler) {
 		}
 
 		db.Instance.Where("internal_chat_id = ? AND left_at IS NULL", internalChatId).Find(&members)
+		sortConversationMembers(members, ownerID)
 
 		var adminIDs []int64
 		if ownerID > 0 {
@@ -1288,17 +1372,17 @@ func GetChat(c *gin.Context, r *core.BaseHandler) {
 		var conv db_models.Conversation
 		_ = db.Instance.Where("internal_id = ?", internalChatID).First(&conv).Error
 
-		var members []db_models.ConversationMember
-		db.Instance.Where("internal_chat_id = ? AND left_at IS NULL", internalChatID).Order("joined_at ASC").Find(&members)
-
 		var isMember bool
 		var leftState int
 		var kickedState int
 		var adminID int64
-
 		if conv.OwnerID != nil && *conv.OwnerID > 0 {
 			adminID = *conv.OwnerID
 		}
+
+		var members []db_models.ConversationMember
+		db.Instance.Where("internal_chat_id = ? AND left_at IS NULL", internalChatID).Find(&members)
+		sortConversationMembers(members, adminID)
 
 		userIDs := make([]int64, 0, len(members))
 		for _, m := range members {
@@ -1413,8 +1497,16 @@ func GetChatUsers(c *gin.Context, r *core.BaseHandler) {
 		}
 	}
 
+	var conv db_models.Conversation
+	_ = db.Instance.Where("internal_id = ?", internalChatID).First(&conv).Error
+	var ownerID int64
+	if conv.OwnerID != nil {
+		ownerID = *conv.OwnerID
+	}
+
 	var members []db_models.ConversationMember
-	db.Instance.Where("internal_chat_id = ? AND left_at IS NULL", internalChatID).Order("joined_at ASC").Find(&members)
+	db.Instance.Where("internal_chat_id = ? AND left_at IS NULL", internalChatID).Find(&members)
+	sortConversationMembers(members, ownerID)
 
 	userIDs := make([]int64, 0, len(members))
 	for _, m := range members {
