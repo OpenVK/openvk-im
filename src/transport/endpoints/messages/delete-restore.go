@@ -5,6 +5,7 @@ import (
 	"net/http"
 	dbx "ovk-im/src/db"
 	db_models "ovk-im/src/models/db"
+	lp_models "ovk-im/src/models/longpoll"
 	"ovk-im/src/repo/chat"
 	"ovk-im/src/transport/endpoints/core"
 	"strconv"
@@ -134,7 +135,11 @@ func Delete(c *gin.Context, r *core.BaseHandler) {
 			msgChatID := msg.ChatID
 			affectedChats[msgChatID] = true
 			if deleteAll {
+				isAdminOrOwner := isChatAdminOrOwner(tx, msgChatID, currentUserID)
 				newFlags := msg.Flags | 128 | 64
+				if isAdminOrOwner {
+					newFlags |= uint64(lp_models.FlagDeletedByAdmin)
+				}
 				updates := map[string]interface{}{
 					"flags":      newFlags,
 					"deleted_at": &now,
@@ -236,26 +241,34 @@ func Restore(c *gin.Context, r *core.BaseHandler) {
 			return err
 		}
 
+		isDeletedByAdmin := (msg.Flags & uint64(lp_models.FlagDeletedByAdmin)) != 0
+		isAdminOrOwner := isChatAdminOrOwner(tx, chatID, currentUserID)
+
 		// First check if deleted only for current user
 		var delRecord db_models.DeletedMessage
 		res := tx.Where("user_id = ? AND chat_id = ? AND local_id = ?", currentUserID, chatID, msg.LocalID).Delete(&delRecord)
 		if res.RowsAffected > 0 {
+			if msg.DeletedAt != nil && isDeletedByAdmin && !isAdminOrOwner {
+				return gorm.ErrRecordNotFound
+			}
 			r.SendRestoreEvent(currentUserID, chatID, msg.LocalID, msg.Flags, false)
 			return nil
 		}
 
 		// Otherwise if globally deleted and current user is sender (or chat admin/owner)
 		if msg.DeletedAt != nil {
-			isAuthor := msg.FromID == currentUserID
-			isAdminOrOwner := false
-			if !isAuthor {
-				isAdminOrOwner = isChatAdminOrOwner(tx, chatID, currentUserID)
-			}
-			if !isAuthor && !isAdminOrOwner {
-				return gorm.ErrRecordNotFound
+			if isDeletedByAdmin {
+				if !isAdminOrOwner {
+					return gorm.ErrRecordNotFound
+				}
+			} else {
+				isAuthor := msg.FromID == currentUserID
+				if !isAuthor && !isAdminOrOwner {
+					return gorm.ErrRecordNotFound
+				}
 			}
 
-			newFlags := msg.Flags &^ (128 | 64)
+			newFlags := msg.Flags &^ (128 | 64 | uint64(lp_models.FlagDeletedByAdmin))
 			updates := map[string]interface{}{
 				"flags":      newFlags,
 				"deleted_at": nil,

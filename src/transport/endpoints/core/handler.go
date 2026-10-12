@@ -421,10 +421,15 @@ func (r *BaseHandler) SendDeleteEvent(uid int64, chatID string, localID uint64, 
 			for _, memberID := range members {
 				peerID := chat.DerivePeerID(chatID, memberID)
 
+				mask := lp_models.FlagDeleted | lp_models.FlagDeleteForAll
+				if (flags & uint64(lp_models.FlagDeletedByAdmin)) != 0 {
+					mask |= lp_models.FlagDeletedByAdmin
+				}
+
 				// 1. msg_set_flags (event 2)
 				setFlagsEvent := lp_models.MsgSetFlagsEvent{
 					MessageID: localID,
-					Mask:      lp_models.MessageFlags{Value: lp_models.FlagDeleted | lp_models.FlagDeleteForAll},
+					Mask:      lp_models.MessageFlags{Value: mask},
 					PeerID:    peerID,
 				}
 				r.LPRepo.PushEvent(ctx, memberID, "msg_set_flags", setFlagsEvent)
@@ -488,7 +493,7 @@ func (r *BaseHandler) SendRestoreEvent(uid int64, chatID string, localID uint64,
 				// 1. msg_reset_flags (event 3)
 				resetFlagsEvent := lp_models.MsgResetFlagsEvent{
 					MessageID: localID,
-					Mask:      lp_models.MessageFlags{Value: lp_models.FlagDeleted | lp_models.FlagDeleteForAll},
+					Mask:      lp_models.MessageFlags{Value: lp_models.FlagDeleted | lp_models.FlagDeleteForAll | lp_models.FlagDeletedByAdmin},
 					PeerID:    peerID,
 				}
 				r.LPRepo.PushEvent(ctx, memberID, "msg_reset_flags", resetFlagsEvent)

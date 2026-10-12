@@ -27,6 +27,7 @@ type VKApiMessage struct {
 	Attachments           string         `json:"attachments"`
 	Important             bool           `json:"important"`
 	Deleted               int            `json:"deleted,omitempty"`
+	DeletedByAdmin        int            `json:"deleted_by_admin,omitempty"`
 	IsPinned              int            `json:"is_pinned,omitempty"`
 	ReplyMessage          *VKApiMessage  `json:"reply_message,omitempty"`
 	ForwardMessages       []VKApiMessage `json:"fwd_messages,omitempty"`
@@ -49,6 +50,7 @@ type VKApiMessageLegacy struct {
 	HasForwardMessages bool                 `json:"has_fwd_messages,omitempty"`
 	Important          bool                 `json:"important,omitempty"`
 	Deleted            int                  `json:"deleted"`
+	DeletedByAdmin     int                  `json:"deleted_by_admin,omitempty"`
 	Emoji              int                  `json:"emoji"`
 	ChatID             int64                `json:"chat_id,omitempty"`
 	ChatActive         []int64              `json:"chat_active,omitempty"`
@@ -260,6 +262,11 @@ func (m *Message) ToVKApiStructBatch(tx *gorm.DB, depth int, currentUserID int64
 		deletedFlag = 1
 	}
 
+	deletedByAdminFlag := 0
+	if (m.Flags & 2048) != 0 {
+		deletedByAdminFlag = 1
+	}
+
 	text := string(m.Text)
 	attachments := string(m.Attachments)
 	if isDeleted && currentUserID != 0 {
@@ -279,6 +286,7 @@ func (m *Message) ToVKApiStructBatch(tx *gorm.DB, depth int, currentUserID int64
 		Important:             isImp,
 		Attachments:           attachments,
 		Deleted:               deletedFlag,
+		DeletedByAdmin:        deletedByAdminFlag,
 	}
 
 	if m.FromID == currentUserID {
@@ -414,6 +422,11 @@ func (m *Message) ToVKApiStructBatchLegacy(tx *gorm.DB, depth int, currentUserID
 		deletedFlag = 1
 	}
 
+	deletedByAdminFlag := 0
+	if (m.Flags & 2048) != 0 {
+		deletedByAdminFlag = 1
+	}
+
 	body := string(m.Text)
 	attachments := string(m.Attachments)
 	if isDeleted && currentUserID != 0 {
@@ -436,15 +449,16 @@ func (m *Message) ToVKApiStructBatchLegacy(tx *gorm.DB, depth int, currentUserID
 	}
 
 	vkMsg := VKApiMessageLegacy{
-		ID:          m.ID,
-		Date:        m.CreatedAt.Unix(),
-		UserID:      userID,
-		FromID:      m.FromID,
-		Body:        body,
-		Attachments: attachments,
-		Important:   isImp,
-		Emoji:       hasEmoji,
-		Deleted:     deletedFlag,
+		ID:             m.ID,
+		Date:           m.CreatedAt.Unix(),
+		UserID:         userID,
+		FromID:         m.FromID,
+		Body:           body,
+		Attachments:    attachments,
+		Important:      isImp,
+		Emoji:          hasEmoji,
+		Deleted:        deletedFlag,
+		DeletedByAdmin: deletedByAdminFlag,
 	}
 
 	if m.FromID == currentUserID {

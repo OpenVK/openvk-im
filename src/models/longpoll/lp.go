@@ -140,18 +140,19 @@ func NewLPAttachments(raw string) LPAttachments {
 type MessageFlag uint64
 
 const (
-	FlagUnread       MessageFlag = 1
-	FlagOutbox       MessageFlag = 2
-	FlagReplied      MessageFlag = 4
-	FlagImportant    MessageFlag = 8
-	FlagChat         MessageFlag = 16
-	FlagFriends      MessageFlag = 32
-	FlagSpam         MessageFlag = 64
-	FlagDeleteForAll MessageFlag = 64
-	FlagDeleted      MessageFlag = 128
-	FlagFixed        MessageFlag = 256
-	FlagMedia        MessageFlag = 512
-	FlagHidden       MessageFlag = 65536
+	FlagUnread         MessageFlag = 1
+	FlagOutbox         MessageFlag = 2
+	FlagReplied        MessageFlag = 4
+	FlagImportant      MessageFlag = 8
+	FlagChat           MessageFlag = 16
+	FlagFriends        MessageFlag = 32
+	FlagSpam           MessageFlag = 64
+	FlagDeleteForAll   MessageFlag = 64
+	FlagDeleted        MessageFlag = 128
+	FlagFixed          MessageFlag = 256
+	FlagMedia          MessageFlag = 512
+	FlagDeletedByAdmin MessageFlag = 2048
+	FlagHidden         MessageFlag = 65536
 )
 
 type MessageFlags struct {
