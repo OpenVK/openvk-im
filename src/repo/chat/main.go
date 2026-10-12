@@ -569,3 +569,48 @@ func CountUnreadConversations(tx *gorm.DB, userID int64) (int64, error) {
 	return count, err
 }
 
+func CountUnreadConversationsForGroups(tx *gorm.DB, groupIDs []int64) (map[int64]int64, error) {
+	result := make(map[int64]int64)
+	if len(groupIDs) == 0 {
+		return result, nil
+	}
+
+	for _, gid := range groupIDs {
+		result[gid] = 0
+	}
+
+	var memberUserIDs []int64
+	for _, gid := range groupIDs {
+		memberUserIDs = append(memberUserIDs, -gid)
+	}
+
+	type groupCountRow struct {
+		UserID int64 `gorm:"column:user_id"`
+		Count  int64 `gorm:"column:cnt"`
+	}
+
+	var rows []groupCountRow
+	err := getDB(tx).Table("messages").
+		Select("conversation_members.user_id, COUNT(DISTINCT messages.chat_id) AS cnt").
+		Joins("JOIN conversation_members ON conversation_members.internal_chat_id = messages.chat_id AND conversation_members.user_id IN ? AND conversation_members.left_at IS NULL", memberUserIDs).
+		Where("messages.from_id != conversation_members.user_id").
+		Where("messages.local_id > conversation_members.last_read_id").
+		Where("messages.local_id > COALESCE(conversation_members.deleted_before_id, 0)").
+		Where("messages.deleted_at IS NULL").
+		Where("NOT EXISTS (SELECT 1 FROM deleted_messages dm WHERE dm.chat_id = messages.chat_id AND dm.user_id = conversation_members.user_id AND dm.local_id = messages.local_id)").
+		Group("conversation_members.user_id").
+		Scan(&rows).Error
+
+	if err != nil {
+		return result, err
+	}
+
+	for _, r := range rows {
+		gid := -r.UserID
+		result[gid] = r.Count
+	}
+
+	return result, nil
+}
+
+

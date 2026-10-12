@@ -6,6 +6,8 @@ import (
 	db_models "ovk-im/src/models/db"
 	"ovk-im/src/repo/chat"
 	"ovk-im/src/transport/endpoints/core"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -40,6 +42,34 @@ func GetUnreadMessages(c *gin.Context, r *core.BaseHandler) {
 func GetUnreadConversations(c *gin.Context, r *core.BaseHandler) {
 	val, _ := c.Get("userID")
 	userID := val.(int64)
+
+	groupIDsStr := r.Get(c, "group_ids")
+	if groupIDsStr != "" {
+		parts := strings.Split(groupIDsStr, ",")
+		var groupIDs []int64
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if gid, err := strconv.ParseInt(p, 10, 64); err == nil && gid > 0 {
+				groupIDs = append(groupIDs, gid)
+			}
+		}
+
+		counts, err := chat.CountUnreadConversationsForGroups(db.Instance, groupIDs)
+		if err != nil {
+			r.Reject(c, 500, "Database error")
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"response": gin.H{
+				"counts": counts,
+			},
+		})
+		return
+	}
 
 	count, err := chat.CountUnreadConversations(db.Instance, userID)
 	if err != nil {
