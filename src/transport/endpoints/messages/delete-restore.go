@@ -16,6 +16,25 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+func isChatAdminOrOwner(dbConn *gorm.DB, chatID string, userID int64) bool {
+	if !strings.HasPrefix(chatID, "c") {
+		return false
+	}
+	var conv db_models.Conversation
+	if err := dbConn.Select("owner_id").Where("internal_id = ?", chatID).First(&conv).Error; err == nil {
+		if conv.OwnerID != nil && *conv.OwnerID == userID {
+			return true
+		}
+	}
+	var count int64
+	if err := dbConn.Model(&db_models.ConversationMember{}).
+		Where("internal_chat_id = ? AND user_id = ? AND is_admin = ? AND left_at IS NULL", chatID, userID, true).
+		Count(&count).Error; err == nil && count > 0 {
+		return true
+	}
+	return false
+}
+
 func Delete(c *gin.Context, r *core.BaseHandler) {
 	val, exists := c.Get("userID")
 	if !exists || val == nil {
@@ -81,14 +100,24 @@ func Delete(c *gin.Context, r *core.BaseHandler) {
 	}
 
 	if deleteAll {
+		chatAdminMap := make(map[string]bool)
 		for _, msg := range msgs {
-			if msg.FromID != currentUserID {
-				r.Reject(c, 924, "Can't delete this message for all users: you are not the author")
-				return
+			isAdminOrOwner, exists := chatAdminMap[msg.ChatID]
+			if !exists {
+				isAdminOrOwner = isChatAdminOrOwner(dbx.Instance, msg.ChatID, currentUserID)
+				chatAdminMap[msg.ChatID] = isAdminOrOwner
 			}
-			if time.Since(msg.CreatedAt).Hours() > 24 {
-				r.Reject(c, 924, "Can't delete this message for all users: 24 hours have passed")
-				return
+
+			if msg.FromID != currentUserID {
+				if !isAdminOrOwner {
+					r.Reject(c, 924, "Can't delete this message for all users: you are not the author")
+					return
+				}
+			} else {
+				if !isAdminOrOwner && time.Since(msg.CreatedAt).Hours() > 24 {
+					r.Reject(c, 924, "Can't delete this message for all users: 24 hours have passed")
+					return
+				}
 			}
 		}
 	}
@@ -215,9 +244,14 @@ func Restore(c *gin.Context, r *core.BaseHandler) {
 			return nil
 		}
 
-		// Otherwise if globally deleted and current user is sender
+		// Otherwise if globally deleted and current user is sender (or chat admin/owner)
 		if msg.DeletedAt != nil {
-			if msg.FromID != currentUserID {
+			isAuthor := msg.FromID == currentUserID
+			isAdminOrOwner := false
+			if !isAuthor {
+				isAdminOrOwner = isChatAdminOrOwner(tx, chatID, currentUserID)
+			}
+			if !isAuthor && !isAdminOrOwner {
 				return gorm.ErrRecordNotFound
 			}
 
