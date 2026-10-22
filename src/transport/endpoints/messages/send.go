@@ -236,6 +236,16 @@ func Send(c *gin.Context, r *core.BaseHandler) {
 					}
 					srcChatID := chat.GetInternalChatID(srcPeerID, senderID)
 
+					var isMember bool
+					db.Instance.Model(&db_models.ConversationMember{}).
+						Select("count(*) > 0").
+						Where("internal_chat_id = ? AND user_id = ? AND left_at IS NULL", srcChatID, senderID).
+						Scan(&isMember)
+					if !isMember {
+						r.Reject(c, 917, "You don't have permission to forward one or more of these messages")
+						return
+					}
+
 					var globalIDs []uint64
 					q := db.Instance.Model(&db_models.Message{}).
 						Where("chat_id = ? AND local_id IN ?", srcChatID, fwdPayload.ConversationMessageIDs)
@@ -292,6 +302,7 @@ func Send(c *gin.Context, r *core.BaseHandler) {
 		db.Instance.Model(&db_models.Message{}).
 			Select("id, chat_id").
 			Where("id IN ?", validForwardIDs).
+			Where("chat_id IN (SELECT internal_chat_id FROM conversation_members WHERE user_id = ? AND left_at IS NULL)", senderID).
 			Scan(&refs)
 
 		if len(refs) != len(validForwardIDs) {
